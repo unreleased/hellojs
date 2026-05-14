@@ -1,4 +1,4 @@
-# @conorre/hellojs
+# @unreleased/hellojs
 
 A Node.js HTTP client whose on-the-wire TLS handshake, HTTP/2 setup, and
 HTTP/3 (QUIC) flight produces **the same JA4 / Akamai / peetprint
@@ -6,11 +6,11 @@ fingerprint as Chrome 147 on macOS**. Drop-in
 [`request`](https://github.com/request/request)-shape API.
 
 ```bash
-npm install @conorre/hellojs
+npm install @unreleased/hellojs
 ```
 
 ```js
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 const html = await request('https://www.cloudflare.com/')
 
@@ -88,7 +88,7 @@ handshake — same as a real Chrome browser.
 ## Quick start
 
 ```js
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 // GET, body returned as Buffer (or string if content-type says utf-8, or
 // object if json:true)
@@ -238,7 +238,7 @@ Pool internals:
 
 ```js
 // Tune limits per Pool instance:
-const { Pool } = require('@conorre/hellojs')
+const { Pool } = require('@unreleased/hellojs')
 const myPool = new Pool({ idleTimeoutMs: 60_000, maxPerHost: 12 })
 ```
 
@@ -329,7 +329,7 @@ HELLOJS_SESSION_CACHE=/var/cache/hellojs-sessions.json node my-script.js
 Or in JS:
 
 ```js
-require('@conorre/hellojs/lib/tls/session-cache').enablePersistence({
+require('@unreleased/hellojs/lib/tls/session-cache').enablePersistence({
   path: '/var/cache/hellojs-sessions.json',
 })
 ```
@@ -369,7 +369,7 @@ Subscribe to request lifecycle events for metrics, tracing, or SLO tracking. Hoo
 exceptions are swallowed — they never break the request.
 
 ```js
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 request.observability.on('request:end', (ev) => {
   console.log(`req ${ev.id} ${ev.status} in ${ev.durationMs}ms; ${ev.totalBytes}B`)
@@ -393,7 +393,7 @@ Paste a [tls.peet.ws/api/all](https://tls.peet.ws/api/all) JSON response into
 
 ```js
 const fs = require('node:fs')
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 const peetJson = JSON.parse(fs.readFileSync('./captured.json', 'utf8'))
 request.profiles.registerFromPeet('chrome148-mac', peetJson)
@@ -478,8 +478,8 @@ await request({ url: '...', h3: false })
 Or use the lower-level QUIC + H3 layer directly:
 
 ```js
-const { QuicConnection } = require('@conorre/hellojs/lib/h3/connection')
-const { H3Client } = require('@conorre/hellojs/lib/h3/h3')
+const { QuicConnection } = require('@unreleased/hellojs/lib/h3/connection')
+const { H3Client } = require('@unreleased/hellojs/lib/h3/h3')
 
 const conn = new QuicConnection('cloudflare-quic.com', 443)
 conn.on('ready', async () => {
@@ -599,8 +599,8 @@ RFC 8470 for why.
 > the 0-RTT response, drop down to `TLS` + your own frame parser:
 >
 > ```js
-> const { TLS } = require('@conorre/hellojs')
-> const sessionCache = require('@conorre/hellojs/lib/tls/session-cache')
+> const { TLS } = require('@unreleased/hellojs')
+> const sessionCache = require('@unreleased/hellojs/lib/tls/session-cache')
 >
 > const session = sessionCache.peek('example.com')
 > const tls = new TLS('example.com', 443, null, { session, earlyData })
@@ -672,7 +672,7 @@ We extract Signed Certificate Timestamps (SCTs) from the leaf cert's
 `1.3.6.1.4.1.11129.2.4.2` extension and expose them as `result.scts` from
 `validateChain()`. Full SCT signature verification requires a CT log key list (not
 bundled — distribute via your own update mechanism, then call
-`require('@conorre/hellojs/lib/tls/sct').verifySct(sct, leafDer, logKeys)`).
+`require('@unreleased/hellojs/lib/tls/sct').verifySct(sct, leafDer, logKeys)`).
 
 ### Errors
 
@@ -695,7 +695,7 @@ Type declarations ship with the package (`index.d.ts`) and are validated under
 `tsc --strict` in CI.
 
 ```ts
-import request, { HellojsError, HellojsErrorCode, Response, RequestOptions } from '@conorre/hellojs'
+import request, { HellojsError, HellojsErrorCode, Response, RequestOptions } from '@unreleased/hellojs'
 
 const opts: RequestOptions = {
   url: 'https://api.example.com',
@@ -802,7 +802,7 @@ Every operational failure surfaces as a `HellojsError` with a stable
 and the code for precise behavior.
 
 ```js
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 try {
   await request({ url: 'https://example.com/foo' })
@@ -848,7 +848,7 @@ HELLOJS_LOG=trace  node my-script.js   # everything (very loud)
 aliases for `trace`. You can also set the level from JS:
 
 ```js
-const log = require('@conorre/hellojs/lib/models/log')
+const log = require('@unreleased/hellojs/lib/models/log')
 log.setLevel('info')
 log.setJsonMode(true)   // emit JSON-line records instead of colored text
 ```
@@ -881,7 +881,7 @@ HELLOJS_KEYLOG=/tmp/hellojs.keys node my-script.js
 ## API surface
 
 ```js
-const request = require('@conorre/hellojs')
+const request = require('@unreleased/hellojs')
 
 // Main API
 request(opts)                    // Promise<body | Response | Readable>
@@ -914,8 +914,8 @@ request.TLS                      // class TLS(host, port, proxy?, opts?)
 request.Pool                     // class Pool({ idleTimeoutMs, maxPerHost })
 
 // HTTP/3 stand-alone
-const { QuicConnection } = require('@conorre/hellojs/lib/h3/connection')
-const { H3Client }       = require('@conorre/hellojs/lib/h3/h3')
+const { QuicConnection } = require('@unreleased/hellojs/lib/h3/connection')
+const { H3Client }       = require('@unreleased/hellojs/lib/h3/h3')
 ```
 
 Errors are `HellojsError` instances. See [Errors](#errors) for the full taxonomy.

@@ -1,4 +1,4 @@
-// Strict-TS validation of @conorre/hellojs's index.d.ts.
+// Strict-TS validation of @unreleased/hellojs's index.d.ts.
 //
 // This file is compiled via `tsc --noEmit --strict` in CI. Any drift between the .d.ts
 // and the real export shape will surface as a compile error here. Don't import from the

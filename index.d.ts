@@ -1,4 +1,4 @@
-// TypeScript declarations for @conorre/hellojs.
+// TypeScript declarations for @unreleased/hellojs.
 //
 // Public surface: a request.js-shape `request()` function plus the lower-level
 // `TLS`, `Pool`, and `encodeH2EarlyData` exports.
