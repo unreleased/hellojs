@@ -737,7 +737,7 @@ then 50 parallel requests. Reproduce with `node test/bench/clients.js`.
   remaining gap is the genuine, irreducible cost of (a) building a Chrome-shape
   ClientHello (~1500 B incl. the X25519MLKEM768 hybrid key share) and (b)
   processing the handshake with a pure-JS TLS state machine vs. Node's native
-  C++ TLS. Down from 273 ms before optimization (14× speedup; see notes below).
+  C++ TLS.
 - **Warm p50: tied for fastest** (0.3 ms) with got, node-http2, undici.
 - **50 parallel: 2nd fastest** (4.6 ms) — 5-6× faster than every h1 client and
   only 2.2 ms behind raw node-http2. h2 multiplexing wins decisively here.
@@ -779,18 +779,6 @@ shared endpoint).
   available here without dropping fingerprint fidelity.
 
 Reproduce: `REMOTE_TARGET=www.cloudflare.com/cdn-cgi/trace node test/bench/clients.js`.
-
-### Cold-connect optimization history
-
-Two bugs were responsible for an earlier 273 ms cold connect; both have been fixed:
-
-1. **Happy Eyeballs delay on IPv4-only hosts (-250 ms).** RFC 8305's 250 ms head
-   start for IPv6 was being added to IPv4 attempts even when no IPv6 addresses
-   existed (e.g. loopback). Fix: only stagger when both families are available.
-2. **mlkem async-wrapper microtask hops (-8 ms).** Switched from the deprecated
-   `MlKem768` async class to a sync-method-bearing `MlKem768Impl`, deep-loaded
-   from the package internals. Keygen is now genuinely synchronous; one keypair
-   is sync-primed at module load so the first request finds the pool warm.
 
 ### Soak
 
