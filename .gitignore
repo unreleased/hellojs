@@ -1,0 +1,20 @@
+node_modules/
+package-lock.json.bak
+
+# Captures, scratch, generated keys
+ssl.keys
+response*.json
+chrome-response-*.json
+encrypted_pms.bin
+*.pem
+*.der
+Untitled*
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# npm artifacts
+*.tgz
