@@ -1018,8 +1018,6 @@ cold-connect gains and ~45% of the concurrent-throughput gains came from.
   uploads. These don't affect the fingerprint or TLS layer — they're caller
   conveniences that can sit on top.
 
-For a roadmap of what's planned next, see [PLAN.md](PLAN.md).
-
 ---
 
 ## License
