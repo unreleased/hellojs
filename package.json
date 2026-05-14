@@ -21,7 +21,7 @@
     "SECURITY.md"
   ],
   "scripts": {
-    "test": "node --test 'test/unit/*.test.js'",
+    "test": "node --test test/unit/*.test.js",
     "test:fingerprint": "node test/fingerprint/chrome147.js",
     "test:integration": "node test/integration/httpbin.js && node test/integration/multi-server.js && node test/integration/api.js",
     "test:soak": "node --expose-gc test/soak/soak.js",
