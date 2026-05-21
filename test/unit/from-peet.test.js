@@ -166,3 +166,93 @@ test('registerFromPeet: registers + returns profile', () => {
 	assert.strictEqual(p.name, 'parrot-test')
 	assert.strictEqual(profiles.get('parrot-test'), p)
 })
+
+test('fromPeet: detects useGrease=true when GREASE appears anywhere', () => {
+	const p = fromPeet(SAMPLE)
+	assert.strictEqual(p.tls.useGrease, true)
+})
+
+// Regression: this parrot is a real capture of a non-Chrome client (TLS 1.2 only, no GREASE,
+// status_request_v2, signature_algorithms_cert, bare-hex sigalgs). Every assertion in this
+// test corresponds to a Phase-1 fix:
+//   - TLS_EMPTY_RENEGOTIATION_INFO alias (CIPHERS missing 0x00ff)
+//   - rsa_pss_pss_sha{256,384,512} + ecdsa_sha1 added to SIGALG_BY_NAME
+//   - bare "0x402" / "0x303" / "0x301" / "0x302" / "0x202" parse via extractBare
+//   - useGrease=false because input has zero GREASE markers
+//   - extension 50 raw bytes captured for byte-exact emission
+//   - status_request_v2 shape captured
+const fs = require('node:fs')
+const path = require('node:path')
+const MIDDLEBOX = JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures/middlebox-tls12-peet.json'), 'utf8'))
+
+test('fromPeet (middlebox-tls12): parses without throwing', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.ok(p)
+})
+
+test('fromPeet (middlebox-tls12): cipher list includes SCSV (0x00ff) at end', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.strictEqual(p.tls.ciphers.length, 13)
+	assert.strictEqual(p.tls.ciphers[p.tls.ciphers.length - 1], 0x00ff)
+})
+
+test('fromPeet (middlebox-tls12): useGrease=false', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.strictEqual(p.tls.useGrease, false)
+})
+
+test('fromPeet (middlebox-tls12): supportedVersions = [TLS 1.2] only', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.deepStrictEqual(p.tls.supportedVersions, [0x0303])
+})
+
+test('fromPeet (middlebox-tls12): full sigalg list incl. rsa_pss_pss_* + bare-hex codepoints', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.deepStrictEqual(p.tls.signatureAlgorithms, [
+		0x0403, 0x0503, 0x0603,
+		0x0804, 0x0805, 0x0806,
+		0x0809, 0x080a, 0x080b,
+		0x0401, 0x0501, 0x0601,
+		0x0402, 0x0303, 0x0301, 0x0302,
+		0x0203, 0x0201, 0x0202,
+	])
+})
+
+test('fromPeet (middlebox-tls12): signature_algorithms_cert raw bytes captured', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.ok(Buffer.isBuffer(p.tls.signatureAlgorithmsCertRaw))
+	assert.strictEqual(p.tls.signatureAlgorithmsCertRaw.length, 40)
+	// First two bytes are the inner-list length (38 = 0x0026).
+	assert.strictEqual(p.tls.signatureAlgorithmsCertRaw.readUInt16BE(0), 0x0026)
+	// Parsed list matches the raw body.
+	assert.strictEqual(p.tls.signatureAlgorithmsCert.length, 19)
+	assert.strictEqual(p.tls.signatureAlgorithmsCert[0], 0x0403)
+})
+
+test('fromPeet (middlebox-tls12): status_request_v2 shape captured', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.deepStrictEqual(p.tls.statusRequestV2, {
+		certificateStatusType: 0,
+		responderIdListLength: 7,
+		requestExtensionsLength: 2,
+	})
+})
+
+test('fromPeet (middlebox-tls12): extensionOrder preserves ids incl. 17 and 50', () => {
+	const p = fromPeet(MIDDLEBOX)
+	const ids = p.tls.extensionOrder.filter(e => !e.grease).map(e => e.id)
+	assert.deepStrictEqual(ids, [0, 5, 10, 11, 13, 50, 16, 17, 23, 43])
+})
+
+test('fromPeet (middlebox-tls12): supportedGroups (no MLKEM, no GREASE)', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.deepStrictEqual(p.tls.supportedGroups, [0x001d, 0x0017, 0x0018, 0x0019, 0x001e])
+})
+
+test('fromPeet (middlebox-tls12): H/2 settings + WINDOW_UPDATE captured', () => {
+	const p = fromPeet(MIDDLEBOX)
+	assert.strictEqual(p.http2.settings.enablePush, false)
+	assert.strictEqual(p.http2.settings.maxHeaderListSize, 262144)
+	assert.strictEqual(p.http2.windowUpdateIncrement, 10485760)
+	assert.strictEqual(p.http2.sendPriorityFrame, false)
+})
