@@ -130,6 +130,8 @@ test('two real subprocess writers merge instead of clobbering', { timeout: 10_00
 	fs.rmSync(dir, { recursive: true, force: true })
 })
 
+// Same-identity merge: when two processes write tickets for the same key, both should survive
+// (proves the dirtyState/removedTickets logic doesn't drop the peer's writes).
 test('two real subprocess writers merge same-identity tickets instead of clobbering', { timeout: 10_000 }, async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hjcp-'))
 	const tmp = path.join(dir, 'sessions.json')

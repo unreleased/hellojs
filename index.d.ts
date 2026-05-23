@@ -13,6 +13,7 @@ export interface CookieJar {
 	setCookie(setCookieHeader: string | string[], host: string): void
 }
 
+/** Body of a `request({ retry: ... })` policy. Field name matches the runtime (lib/client.js). */
 export interface RetryPolicy {
 	limit?: number
 	methods?: string[]
@@ -92,6 +93,8 @@ export type Callback<TBody = unknown> = (
 	body: TBody | undefined,
 ) => void
 
+/** Mirrors the runtime export from `lib/profiles/index.js`. Loosely typed because profiles are
+ * caller-defined plain objects consumed by lib/tls/tls.js / lib/headers.js / lib/h3/transport-params.js. */
 export interface ProfilesRegistry {
 	get(name: string): unknown
 	list(): string[]
@@ -157,6 +160,9 @@ export class TLS extends EventEmitter {
 	on(event: 'error', listener: (err: Error) => void): this
 }
 
+/** The runtime accepts a single options object (host through sessionIdentity). The older
+ * positional signature was removed because the pool now keys connections on additional
+ * identity fields (connectHost, tlsName, ech.public_name) that don't fit positional args. */
 export class Pool {
 	constructor(opts?: { idleTimeoutMs?: number; maxPerHost?: number })
 	acquire(opts: {
