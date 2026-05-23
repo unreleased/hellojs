@@ -132,7 +132,7 @@ await request({
 | `url` / `uri` | string | required | |
 | `method` | string | `'GET'` | |
 | `headers` | object | `{}` | merged into the Chrome 147 default header set; user-supplied keys win on conflict |
-| `body` | string \| Buffer \| object \| Readable | `null` | object → JSON when `json: true`. A Node `Readable` is sent as a streaming request body (chunked h2 DATA frames or h1 `Transfer-Encoding: chunked`). |
+| `body` | string \| Buffer \| object \| Readable | `null` | object → JSON when `json: true`. A Node `Readable` streams on h2; h1/h3 currently buffer the body in memory. |
 | `json` | bool \| object | `false` | parses response as JSON; if object, used as the request body with `content-type: application/json` |
 | `form` | object | — | `application/x-www-form-urlencoded` body |
 | `qs` | object | — | querystring appended to url |
@@ -149,6 +149,7 @@ await request({
 | `retry` | object | none | `{ limit, methods, statusCodes, baseDelayMs }` |
 | `profile` | string | `'chrome147-mac'` | which fingerprint profile to emit |
 | `h3` | bool | — | force HTTP/3 (`true`) or disable auto-upgrade (`false`); unset = auto via Alt-Svc |
+| `ech` | bool | `false` | opt in to HTTPS/SVCB bootstrap and real ECH against published `ech=` configs; may securely retry once on non-HRR `retry_configs` |
 | `earlyData` | Buffer \| string | — | TLS 1.3 0-RTT bytes — see [Session resumption and 0-RTT](#session-resumption-and-0-rtt) |
 | `verifyTLS` | bool | `true` | Validate the server certificate chain (RFC 5280) + hostname (RFC 6125 SubjectAltName). On by default. Set `false` to skip validation (self-signed dev servers, intentional MITM proxies). Applies to both TLS 1.3 and TLS 1.2 paths. See [Certificate validation](#certificate-validation). |
 
@@ -227,10 +228,9 @@ await request({ url: 'https://example.com/a', forever: false })
 
 Pool internals:
 
-- Keyed by `(transport, host:port, profile, proxy)`
+- Keyed by `(transport, host:port, profile, proxy, connectHost, tlsName, ech public_name)`
 - 5-minute idle timeout (evicts inactive connections)
-- 6 simultaneous fresh-handshake connections per host (matches Chrome). Pooled
-  multiplexed connections are not capped by this.
+- 6 simultaneously-open connections per host (matches Chrome); pooled h2/h3 reuse avoids extra handshakes but still occupies one host slot
 - H2 connections multiplex; H1 connections are single-use, kept warm via TCP keep-alive
 - Per-origin in-flight handshake deduplication: concurrent first requests to a new host share one handshake
 - Happy Eyeballs v2 (RFC 8305) — races IPv4 + IPv6 with a 250ms head start for v6;
@@ -279,9 +279,9 @@ If only the legacy `timeout` option is set, it applies to the response phase.
 
 ### Streaming response bodies
 
-Pass `stream: true` and the promise resolves as soon as headers arrive, with the
-response body as a Node `Readable`. The body auto-decompresses (gzip / brotli /
-deflate; zstd requires Node 23.8+ for streaming).
+Pass `stream: true` on the h2 path and the promise resolves as soon as headers arrive,
+with the response body as a Node `Readable`. The body auto-decompresses (gzip /
+brotli / deflate; zstd requires Node 23.8+ for streaming).
 
 ```js
 const { createWriteStream } = require('node:fs')
@@ -304,7 +304,7 @@ res.body.pipe(createWriteStream('./big.iso'))
 ### Streaming request bodies
 
 For large uploads, pass a Node `Readable` as `body`. On h2 it streams as DATA
-frames; on h1 it streams via `Transfer-Encoding: chunked`.
+frames. h1/h3 currently buffer the full body in memory.
 
 ```js
 const { createReadStream } = require('node:fs')
@@ -465,6 +465,9 @@ Pure-JS QUIC + HTTP/3 client at `lib/h3/`, integrated into `request()`:
 // Explicit h3
 await request({ url: 'https://www.cloudflare.com/', h3: true })
 
+// Explicit h3 + ECH from DNS HTTPS/SVCB bootstrap
+await request({ url: 'https://cloudflare-ech.com/cdn-cgi/trace', h3: true, ech: true })
+
 // Automatic upgrade via Alt-Svc — first request goes h2, captures
 // `alt-svc: h3=":443"`, subsequent same-host requests transparently use h3
 // (Chrome behaviour)
@@ -474,6 +477,10 @@ await request({ url: 'https://www.cloudflare.com/api/foo' })   // h3 (auto)
 // Disable h3 explicitly
 await request({ url: '...', h3: false })
 ```
+
+`ech: true` performs HTTPS/SVCB bootstrap, selects a supported published `ECHConfig`,
+offers real ECH on the TCP or QUIC path, and may retry once on a fresh transport when a
+non-HRR rejection securely replaces the config with `retry_configs`.
 
 Or use the lower-level QUIC + H3 layer directly:
 
@@ -507,6 +514,7 @@ await conn.connect()
 - **Path validation** (RFC 9000 §8.2) — auto-respond to PATH_CHALLENGE, `conn.validatePath()` round-trips.
 - **QPACK static table + dynamic-table decode** — server's encoder stream is consumed into a local replica; HEADERS decode against both.
 - **Alt-Svc auto-upgrade** — h2 responses' `alt-svc: h3=":443"; ma=N` cached, subsequent same-host requests transparently use h3.
+- **ECH on QUIC** — `request({ ech: true, h3: true })` reuses the DNS bootstrap + ECH offer path and keeps accepted/retried connections poolable.
 - **Graceful CONNECTION_CLOSE** on close.
 
 ### What's not implemented
@@ -987,8 +995,7 @@ cold-connect gains and ~45% of the concurrent-throughput gains came from.
 
 ## Known limitations
 
-- **ECH:** GREASE-shape only. Real Encrypted Client Hello against published ECHConfigs
-  (read from DNS HTTPS records) is not implemented.
+- **ECH:** published HTTPS/SVCB `ech=` configs are supported on the TCP/TLS and HTTP/3 paths, including one fresh retry on secure `retry_configs` replacement. Not yet implemented: HelloRetryRequest CH2 reseal, real-ECH PSK resumption / 0-RTT, and GREASE outer-PSK shaping.
 - **Certificate Transparency:** SCTs are parsed and exposed; signature verification
   requires a caller-supplied CT log key map. We don't ship the log list.
 - **OCSP:** stapled responses are parsed + verified. We don't fetch OCSP responses

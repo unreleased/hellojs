@@ -19,6 +19,20 @@ function makeSession(seed) {
 	}
 }
 
+test('session identities partition plain, ECH, and public-name entries', () => {
+	delete require.cache[require.resolve('../../lib/tls/session-cache')]
+	const cache = require('../../lib/tls/session-cache')
+	cache.clear()
+	cache.put({ host: 'secret.example' }, makeSession(1))
+	cache.put({ host: 'secret.example', ech: true, publicName: 'public.example' }, makeSession(2))
+	cache.put({ host: 'secret.example', publicName: 'public.example' }, makeSession(3))
+
+	assert.strictEqual(cache.take({ host: 'secret.example' }).ticket.toString(), 'ticket-1-bytes')
+	assert.strictEqual(cache.take({ host: 'secret.example', ech: true, publicName: 'public.example' }).ticket.toString(), 'ticket-2-bytes')
+	assert.strictEqual(cache.take({ host: 'secret.example', publicName: 'public.example' }).ticket.toString(), 'ticket-3-bytes')
+	assert.strictEqual(cache.size(), 0)
+})
+
 test('concurrent writers do not clobber each other (in-process)', () => {
 	const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hjcc-')), 'sessions.json')
 
@@ -79,12 +93,13 @@ test('two real subprocess writers merge instead of clobbering', { timeout: 10_00
 	const tmp = path.join(dir, 'sessions.json')
 
 	const worker = path.join(dir, 'w.js')
+	const cachePath = JSON.stringify(path.resolve(__dirname, '../../lib/tls/session-cache.js'))
+	const persistPath = JSON.stringify(tmp)
 	fs.writeFileSync(worker, `
-		const cache = require('${path.resolve(__dirname, '../../lib/tls/session-cache.js')}');
+		const cache = require(${cachePath});
 		const host = process.argv[2];
 		const tag  = process.argv[3];
-		cache.enablePersistence({ path: '${tmp}' });
-		// 100 puts to stress the lock
+		cache.enablePersistence({ path: ${persistPath} });
 		for (let i = 0; i < 100; i++) {
 			cache.put(host, {
 				ticketLifetime: 7200,
@@ -111,6 +126,45 @@ test('two real subprocess writers merge instead of clobbering', { timeout: 10_00
 	assert.ok(cache.peek('host-a.example'), 'A survived')
 	assert.ok(cache.peek('host-b.example'), 'B survived')
 	assert.ok(cache.peek('host-c.example'), 'C survived')
+
+	fs.rmSync(dir, { recursive: true, force: true })
+})
+
+// Same-identity merge: when two processes write tickets for the same key, both should survive
+// (proves the dirtyState/removedTickets logic doesn't drop the peer's writes).
+test('two real subprocess writers merge same-identity tickets instead of clobbering', { timeout: 10_000 }, async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hjcp-'))
+	const tmp = path.join(dir, 'sessions.json')
+	const worker = path.join(dir, 'w-same.js')
+	const cachePath = JSON.stringify(path.resolve(__dirname, '../../lib/tls/session-cache.js'))
+	const persistPath = JSON.stringify(tmp)
+	fs.writeFileSync(worker, `
+		const cache = require(${cachePath});
+		const tag = process.argv[2];
+		cache.enablePersistence({ path: ${persistPath} });
+		for (let i = 0; i < 1; i++) {
+			cache.put('shared.example', {
+				ticketLifetime: 7200,
+				ticketAgeAdd: 0,
+				ticketNonce: Buffer.from([i & 0xff]),
+				ticket: Buffer.from(tag + '-' + i),
+				maxEarlyDataSize: 0,
+				issuedAt: Date.now(),
+				expiresAt: Date.now() + 3600_000,
+			});
+		}
+		cache.flush();
+	`)
+
+	await Promise.all([
+		new Promise((r) => fork(worker, ['A']).on('exit', r)),
+		new Promise((r) => fork(worker, ['B']).on('exit', r)),
+	])
+
+	const persisted = JSON.parse(fs.readFileSync(tmp, 'utf8'))
+	const tickets = (persisted['shared.example'] || []).map((entry) => Buffer.from(entry.ticket, 'base64').toString('utf8'))
+	assert.ok(tickets.some((ticket) => ticket.startsWith('A-')), 'same-key A ticket survived')
+	assert.ok(tickets.some((ticket) => ticket.startsWith('B-')), 'same-key B ticket survived')
 
 	fs.rmSync(dir, { recursive: true, force: true })
 })

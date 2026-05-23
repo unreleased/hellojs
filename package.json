@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "fzstd": "^0.1.1",
+    "hpke": "^1.1.1",
     "mlkem": "^2.7.0"
   }
 }

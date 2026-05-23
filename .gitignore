@@ -1,5 +1,8 @@
 node_modules/
 package-lock.json.bak
+.worktrees/
+docs/
+AGENTS.md
 
 # Captures, scratch, generated keys
 ssl.keys
