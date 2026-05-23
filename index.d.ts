@@ -17,7 +17,7 @@ export interface RetryPolicy {
 	limit?: number
 	methods?: string[]
 	statusCodes?: number[]
-	baseDelay?: number
+	baseDelayMs?: number
 }
 
 export interface PerPhaseTimeouts {
@@ -36,7 +36,7 @@ export interface RequestOptions {
 	json?: boolean | unknown
 	form?: Record<string, string | number>
 	qs?: Record<string, string | number | (string | number)[]>
-	jar?: CookieJar | true
+	jar?: CookieJar
 	gzip?: boolean
 	followRedirect?: boolean
 	maxRedirects?: number
@@ -44,14 +44,17 @@ export interface RequestOptions {
 	timeouts?: PerPhaseTimeouts
 	proxy?: string
 	forever?: boolean
+	h3?: boolean
 	resolveWithFullResponse?: boolean
 	simple?: boolean
 	retry?: RetryPolicy
 
 	/** TLS-only: turn on cert chain validation (default `true`). */
 	verifyTLS?: boolean
+	/** Opt in to HTTPS/SVCB bootstrap and real ECH on the TCP/QUIC paths. */
+	ech?: boolean
 	/** TLS 1.3 0-RTT early data to bundle with the PSK. */
-	earlyData?: Buffer | Uint8Array
+	earlyData?: string | Buffer | Uint8Array
 	/** When true, resolve as soon as headers arrive and expose the body as a Node Readable. */
 	stream?: boolean
 }
@@ -89,6 +92,15 @@ export type Callback<TBody = unknown> = (
 	body: TBody | undefined,
 ) => void
 
+export interface ProfilesRegistry {
+	get(name: string): unknown
+	list(): string[]
+	register(name: string, profile: unknown): unknown
+	registerFromPeet(name: string, peetJson: unknown): unknown
+	fromPeet(peetJson: unknown): unknown
+	profiles: Record<string, unknown>
+}
+
 export interface RequestFn {
 	<TBody = unknown>(opts: RequestOptions, cb?: Callback<TBody>): Promise<Response<TBody> | TBody>
 	(url: string, cb?: Callback): Promise<unknown>
@@ -105,6 +117,8 @@ export interface RequestFn {
 	jar(): CookieJar
 	HellojsError: typeof HellojsError
 	pool: Pool
+	observability: EventEmitter
+	profiles: ProfilesRegistry
 
 	/** Exported for advanced users. */
 	TLS: typeof TLS
@@ -145,8 +159,26 @@ export class TLS extends EventEmitter {
 
 export class Pool {
 	constructor(opts?: { idleTimeoutMs?: number; maxPerHost?: number })
-	acquire(host: string, port?: number, opts?: RequestOptions & TLSOptions): Promise<unknown>
+	acquire(opts: {
+		host: string
+		port?: number
+		profile?: string
+		proxy?: string
+		forceFresh?: boolean
+		cacheConnection?: boolean | null
+		transport?: 'tcp' | 'quic'
+		earlyData?: string | Buffer | Uint8Array | null
+		verifyTLS?: boolean
+		timeouts?: PerPhaseTimeouts | null
+		profileObj?: unknown
+		connectHost?: string | null
+		tlsName?: string | null
+		addressHints?: { v4?: string[]; v6?: string[] } | null
+		ech?: unknown
+		sessionIdentity?: unknown
+	}): Promise<unknown>
 	closeAll(): void
+	shutdown(timeoutMs?: number): Promise<void>
 	readonly idleTimeoutMs: number
 }
 

@@ -60,17 +60,38 @@ test('semaphore: waiters in the queue resume when a slot is released', async () 
 test('semaphore: rejected acquire releases its slot (no waiter leak)', async () => {
 	const pool = new Pool({ maxPerHost: 1 })
 
-	// 240.0.0.1 is a sinkhole; we use a 100ms TCP connect timeout to force a fast reject.
+	// 240.0.0.1 is unroutable in this harness; depending on host networking it may fail
+	// during connect timeout or earlier with an unreachable-network error.
 	await assert.rejects(
 		pool.acquire({ host: '240.0.0.1', port: 443, timeouts: { connect: 100 } }),
-		(e) => e.code === 'ETIMEDOUT',
+		(e) => e.code === 'ETIMEDOUT' || e.code === 'ENETUNREACH',
 	)
 	// The slot should be released on failure — a fresh acquire to the same host must succeed
 	// immediately rather than block.
 	await assert.rejects(
 		pool.acquire({ host: '240.0.0.1', port: 443, timeouts: { connect: 100 } }),
-		(e) => e.code === 'ETIMEDOUT',
+		(e) => e.code === 'ETIMEDOUT' || e.code === 'ENETUNREACH',
 	)
 	// Should now have NO held slots
 	assert.strictEqual(pool.hostState.get('240.0.0.1:443'), undefined)
+})
+
+test('forceFresh can still populate the pool for later reuse', async () => {
+	const pool = new Pool({ maxPerHost: 2 })
+	let creates = 0
+	pool._create = async () => {
+		creates++
+		return {
+			closed: false,
+			close() { this.closed = true },
+			canIssueRequest() { return !this.closed },
+			markUsed() {},
+		}
+	}
+
+	const first = await pool.acquire({ host: 'cache.example', port: 443, forceFresh: true, cacheConnection: true })
+	const second = await pool.acquire({ host: 'cache.example', port: 443 })
+	assert.strictEqual(second, first)
+	assert.strictEqual(creates, 1)
+	first.close('done')
 })
