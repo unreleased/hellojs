@@ -1,6 +1,6 @@
 {
   "name": "@unreleased/hellojs",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "description": "Custom TLS 1.3 + HTTP/2 + HTTP/3 client mimicking the Chrome 147 fingerprint, with a request.js-shape API.",
   "main": "index.js",
   "types": "index.d.ts",
