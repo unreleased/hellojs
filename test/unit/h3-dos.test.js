@@ -5,6 +5,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const crypto = require('node:crypto')
 const { QuicConnection, QuicStream } = require('../../lib/h3/connection')
+const qpack = require('../../lib/h3/qpack')
 
 test('_onDatagram drops malformed/garbage datagrams without throwing', () => {
 	const c = new QuicConnection('127.0.0.1', 443)
@@ -55,4 +56,29 @@ test('stream out-of-order reassembly buffer is bounded', () => {
 	for (let i = 0; i < 64 && !errored; i++) s._onData((i + 1) * 1e9, chunk, false)
 	assert.ok(errored, 'stream should error once the out-of-order buffer cap is exceeded')
 	assert.ok(s._pendingBytes <= 8 * 1024 * 1024, `pending bytes ${s._pendingBytes} should stay bounded`)
+})
+
+test('QPACK encoder-stream parser never throws or over-advances on arbitrary input', () => {
+	for (let i = 0; i < 500; i++) {
+		const t = new qpack.DynamicTable(4096)
+		const buf = crypto.randomBytes(1 + (i % 40))
+		let consumed
+		assert.doesNotThrow(() => { consumed = qpack.parseEncoderInstructions(buf, t) })
+		assert.ok(consumed >= 0 && consumed <= buf.length, `consumed ${consumed} not in [0, ${buf.length}]`)
+	}
+})
+
+test('QPACK encoder instruction split across chunks reassembles without corruption', () => {
+	const t = new qpack.DynamicTable(4096)
+	const instr = Buffer.from([0x43, 0x66, 0x6f, 0x6f, 0x03, 0x62, 0x61, 0x72]) // Insert "foo: bar"
+	// First half: value bytes not all present -> consume nothing, insert nothing.
+	let buf = instr.subarray(0, 6)
+	let consumed = qpack.parseEncoderInstructions(buf, t)
+	assert.strictEqual(consumed, 0)
+	assert.strictEqual(t.totalInserted, 0)
+	// Append the rest -> the instruction completes and inserts exactly once (no over-advance/dupe).
+	buf = Buffer.concat([buf.subarray(consumed), instr.subarray(6)])
+	consumed = qpack.parseEncoderInstructions(buf, t)
+	assert.strictEqual(consumed, instr.length)
+	assert.strictEqual(t.totalInserted, 1)
 })
